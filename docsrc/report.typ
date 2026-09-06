@@ -168,9 +168,9 @@ to compute the final estimation.
 \
 == Experimental Results
 \
-= Bloom Filter
+= Bloom Filter <bloom_filter_intro>
 \
-A bloom filter is a probabilistic hash based data structure that is used for checking whether or
+A bloom filter @bloom1970 is a probabilistic hash based data structure that is used for checking whether or
 not an element may be in the dataset while also being ok with having some false positives. \
 In this project we implemented this data structure to test it against the stream of
 unique _userIDs_ of the people who left at least one comment on articles of the
@@ -238,15 +238,53 @@ The space complexity of the bloom filter is trivial too, it is equal to $O(m)$
 
 == Implementation Details <bloom_filter_impl>
 \
+Implementing a bloom filter from scratch in python is very straight forward.
+Since python's integers are not restricted to a maximum amount of bits, we can use a
+single int as our bit array, this means that accessing individual bits can be done with
+simple bitwise operations that are very efficient.
+The class is required to have at least the following methods:
+
+In order to use stable hash functions, we can store them in the object state as an array
+of _k_ elements, the hash function chosen for this implementation is taken from the xxhash library.
+
+Below is a code snippet to showcase the membership check and insertion methods for the
+described class:
+
+#code-block(
+  lang: "python",
+  ```python
+  def add(self, x):
+      self.bits |= self._map_bits(x)
+
+  def _map_bits(self, x):
+      mask = 0
+      for hf in self.hash_fns:
+          mask |= (1 << (hf(x) % self.nbits))
+      return mask
+
+  def contains(self, x):
+      xmask = self._map_bits(x)
+      return (self.bits & xmask) == xmask
+  ```
+)
+
+- self.nbits: number of bits we want to store for the filter (_m_).
+- self.hash_fns: array of _k_ hash functions that return a 64 bit integer.
+- self.bits: bit array that keeps track of the filter state (implemented using python's
+  unbounded ints).
+
+== Chosen Task
+
+As introduced in @bloom_filter_intro, the proposed bloom filter implementation will be
+tested against a stream of _UserIDs_ (numerical values) to check for
+
+
 
 == Experimental results
 \
 The bloom filter seen in @bloom_filter_impl has been tested with multiple parameter
 configurations (for the number of bits and hash functions) to see how much they influenced
 the end performance on the target dataset. \
-
-= Conclusion
-\
 
 = Plagiarism and AI Usage Statement
 \
