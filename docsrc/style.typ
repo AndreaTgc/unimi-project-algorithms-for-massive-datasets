@@ -117,3 +117,13 @@
     ]
   )
 }
+
+#let boxed-note(text) = {
+  align(center)[
+  #box(
+    stroke: black,
+    height: 2em,
+    inset: (top: 0.5em, bottom: 0.5em, left: 0.5em, right: 0.5em),
+    [#text]
+  )]
+}

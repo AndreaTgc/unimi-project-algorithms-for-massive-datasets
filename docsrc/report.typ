@@ -36,7 +36,7 @@ The algorithms and tasks we are going to explore are the following:
 \
 This project was developed using _Google Colab_ as the main computation environment. The Jupyter Notebook submitted alongside this project may require some modifications before being run in a local environment. \
 Below is a brief description of the computational resources available on the 
-CoLab runtime and the versions of the libraries used in this project:
+CoLab runtime and the versions of the main libraries used in this project:
 
 
 - *CPU*: Intel Xeon CPU with 2 vCPUs (virtual CPUs) and 13GB of RAM. 
@@ -44,15 +44,10 @@ CoLab runtime and the versions of the libraries used in this project:
 - *PySpark Version*: 4.0.4 
 - *xxHash Version*: 4.0.1
 
-#align(center)[
-#box(
-  stroke: black,
-  height: 2em,
-  inset: (top: 0.5em, bottom: 0.5em, left: 0.5em, right: 0.5em),
-  [Please note that these versions are correct at the time of writing: #datetime.today().display().]
-)]
+#boxed-note(
+  "Please note that these versions are correct at the time of writing: " + datetime.today().display())
 
-= Dataset Description
+= Dataset Description <dataset_desc>
 \
 The dataset used for this project is the *New York Times Articles & Comments (2020)* @nyt_articles_comments dataset, freely
 available and licensed under the #link("https://it.wikipedia.org/wiki/Licenze_Creative_Commons")[*CC-BY-NC-SA-4.0*] license. \
@@ -132,7 +127,12 @@ an extremely fast non cryptographic hashing algorithm. In particular, this imple
 the xxh3 64 bits version, xxhash is one of the most used hashing algorithms for non
 cryptographic uses in real world use cases (PySpark uses it too).
 
-= Algorithm implementation
+=== Algorithm implementation
+
+The portion of the algorithm responsible for computing the tail lengths and
+keeping track of the maximum values can be described with 3 simple functions.
+Each partition yields a sequence of length _FM_NUM_HASHES_ that is then used
+to compute the final estimation.
 
 #code-block(
   lang: "python",
@@ -143,7 +143,7 @@ cryptographic uses in real world use cases (PySpark uses it too).
       return (x & -x).bit_length() - 1
 
   def hash64bits(value, seed):
-      return xxhash.xxh64(value.encode("utf-8"), seed=seed).intdigest()
+      return xxhash.xxh64(value.to_bytes(8, "little"), seed=seed).intdigest()
 
   def fm_partition(it):
       registers = [0] * FM_NUM_HASHES
@@ -160,21 +160,6 @@ cryptographic uses in real world use cases (PySpark uses it too).
 
 == Experimental Results
 \
-One of the most important questions ask ourselves when implementing this algorithm is the following:
-
-#align(center)[
-#box(
-  stroke: black,
-  height: 2em,
-  inset: (top: 0.5em, bottom: 0.5em, left: 0.5em, right: 0.5em),
-  [How many different hash functions do we use?]
-)]
-
-This is a very important questions because it requires us to think about the tradeoffs between
-compotational expense and accuracy for our specific use case. \
-Choosing to use more hash functions will result in more accurate estimations at the expense of
-performance. \
-
 = AMS Algorithm
 \
 == Space/Time Complexity
@@ -183,10 +168,86 @@ performance. \
 \
 == Experimental Results
 \
+= Bloom Filter
+\
+A bloom filter is a probabilistic hash based data structure that is used for checking whether or
+not an element may be in the dataset while also being ok with having some false positives. \
+In this project we implemented this data structure to test it against the stream of
+unique _userIDs_ of the people who left at least one comment on articles of the
+_Opinion_ category (@dataset_desc).
+
+The bloom filter is structured as follows: \
+
+- An array of $n$ bits is used to store information about the elements seen inside a
+  stream or a generic dataset.
+- $k$ hash functions are used to map an element to $k$ bit positions.
+  - If the bit array already has all those bits set to one, then we may have already
+    seen the element. We are still susceptible to false positives because, since the
+    bit array size is finite, multiple hashes (mapped with the modulo inside the bit
+    array) may end up resulting in the same bit positions being used.
+  - If *at least one* of those bit positions is not 1, then the element was never
+    encountered before (there can be no false negatives).
+
+It is clear that the performance of the filter itself depends heavily on the number
+of bits used for the array and the number of hash functions used on every element.
+These parameters heavily depend on the use case and the available resources for the
+filter.
+
+== False Positives Theory
+\
+To understand why the bloom filter is used, we must also go into the math behind
+the number of false positives. \
+For the rest of this section, we are going to assume _m_ as the number of bits
+and _k_ as the number of hash functions used in the filter. \
+We are also going to assume that the selected hash functions map each element
+uniformely over the _m_ bits.
+
+- After a single element insertion, the probability that a specific bit is
+  not going to be set to 1 as a result of the _k_ hash functions is:
+    - $P("bit remains 0") = (1 - 1/m)^k$
+
+- Given the probabilities described in the first point, for _n_ insertions,
+  the probability that a bit is not going to be set to 1 is:
+    - $P("bit remains 0 after n") = (1 - 1/m)^(k n)$
+
+- The probability of a false positive then becomes:
+    - $P("false positive") = (1 - (1 - 1/m)^(k n))^k$
+
+- We can now approximate $(1 - 1/m)^(k n)$ to $e^((-k n)/m)$ to obtain:
+    - $P("false positive approx") = (1 - e^((-k n)/m))^k$
+
+We can see that, the higher _m_ and _k_ are, the less likely the filter is to
+report a false positive when it's being used. \
+It goes without saying that we cannot simply keep driving these numbers up
+without encountering memory and time issues. To correctly make use of a bloom
+filter, the user must choose _m_ based on their memory constraints and _k_
+depending on the time that is allocatable to the task of computing the hash
+functions for a given element.
+
+== Space/Time Complexity
+\
+When it comes to time complexity, both checking for an element and inserting
+a new one is equal to $O(k)$, where _k_ is the number of hash functions used
+in the filter implementation. The time performance of a bloom filter varies
+greatly depending on the complexity of the hash functions used (which is generally
+tied to the complexity of the type of the elements to hash).
+Generalising this to a stream it becomes trivial that, for _n_ elements, the
+complexity goes up to $O(n k)$.
+The space complexity of the bloom filter is trivial too, it is equal to $O(m)$
+  where _m_ is the number of bits used.
+
+== Implementation Details <bloom_filter_impl>
+\
+
+== Experimental results
+\
+The bloom filter seen in @bloom_filter_impl has been tested with multiple parameter
+configurations (for the number of bits and hash functions) to see how much they influenced
+the end performance on the target dataset. \
+
 = Conclusion
 \
-== Future Work
-\
+
 = Plagiarism and AI Usage Statement
 \
 _I declare that this material, which I now submit for assessment, is entirely my own work and has not been taken from the work of others, save and to the extent that such work has been cited and acknowledged within the text of my work. I understand that plagiarism, collusion, and copying are grave and serious offences in the university and accept the penalties that would be imposed should I engage in plagiarism, collusion or copying. This assignment, or any part of it, has not been previously submitted by me or any other person for assessment on this or any other course of study. No generative AI tool has been used to write the code or the report content._
