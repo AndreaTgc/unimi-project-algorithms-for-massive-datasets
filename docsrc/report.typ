@@ -175,6 +175,10 @@ not an element may be in the dataset while also being ok with having some false 
 In this project we implemented this data structure to test it against the stream of
 unique _userIDs_ of the people who left at least one comment on articles of the
 _Opinion_ category (@dataset_desc).
+More specifically, we started from the set of unique _userIDs_ of the stream
+described above, we then fabricated $n_"fake"$ new unique identifiers that
+are not present in the initial stream to use them to test for false positive
+rates at different configurations (more details in @bloom_filter_impl).
 
 The bloom filter is structured as follows: \
 
@@ -193,7 +197,7 @@ of bits used for the array and the number of hash functions used on every elemen
 These parameters heavily depend on the use case and the available resources for the
 filter.
 
-== False Positives Theory
+== False Positives Theory <bloom_filter_theory>
 \
 To understand why the bloom filter is used, we must also go into the math behind
 the number of false positives. \
@@ -224,7 +228,19 @@ filter, the user must choose _m_ based on their memory constraints and _k_
 depending on the time that is allocatable to the task of computing the hash
 functions for a given element.
 
-== Space/Time Complexity
+If we want to minimize the probability of false positives, we can choose the
+ideal number of hash functions _k_ using the following equation and rounding
+the result to the closest integer:
+
+- $k = m/n ln(2)$
+
+Where $m/n$ is the number of individual bits allocated for each element. This
+means that, even without knowing the exact value of _n_, we can use an estimation 
+of it to choose a number of hash functions that is close to the ideal one.
+
+#boxed-note("This assumes the estimation is not too different from the actual value")
+
+== Space/Time Complexity <bloom_filter_complexity>
 \
 When it comes to time complexity, both checking for an element and inserting
 a new one is equal to $O(k)$, where _k_ is the number of hash functions used
@@ -275,16 +291,41 @@ described class:
 
 == Chosen Task
 
-As introduced in @bloom_filter_intro, the proposed bloom filter implementation will be
-tested against a stream of _UserIDs_ (numerical values) to check for
+As introduced in @bloom_filter_intro, we are going to test the proposed implementation
+in the following way:
+- We first gather the set of all unique _UserIDs_ of users that commented at
+  least one article belonging to the _Opinion_ section.
+- We then generate a set of fake _UserIDs_ that are guaranteed not to be found
+  inside the first set.
+- We "bootstrap" the filter by adding all the _UserIDs_ of the first set to it.
+- We iterate over the second set to calculate the false positive rate with different
+  configurations of _m_ and _k_.
 
+The workflow we just described is going to allow us to compare the empirical results
+gathered with the theory explained in @bloom_filter_theory 
 
-
-== Experimental results
+== Experimental Results
 \
-The bloom filter seen in @bloom_filter_impl has been tested with multiple parameter
-configurations (for the number of bits and hash functions) to see how much they influenced
-the end performance on the target dataset. \
+
+== Scaling to Massive Dataset 
+\
+The bloom filter proposed in this project is suited for scaling to massive datasets,
+given that it is configured with _m_ and _k_ values that are approriate for the task at
+hand. \
+Once the filter has been configured, the memory consumption is fixed at _m_ bits, regarless
+of the number of elements inserted into the filter. Moreover, as seen in @bloom_filter_complexity, the time complexity depends on the value of _k_; since this value is usually constant, the time complexity can be seen as $O(1)$ for each insertion and membership check.\
+
+On the other hand, approaches that use set-like data structures to keep track of the elements
+have a space complexity of $O(n)$. Additionally, as the number of elements inside a set
+grows, the performance of the set operations tends to degrade as well due to hash collisions (both on open and closed hashing approaches). \
+
+A bloom filter therefore provides a userful accuracy/memory tradeoff for large scale data
+processing.
+When the expected number of elements is known, the filter can be configured with $m=b n$
+bits, where _b_ is the number of bits allocated per element.
+In this case, the memory consumption also grows linearly with the number of elements,
+but the required memory can be determined in advance and does not depend on the size of
+the individual elements.
 
 = Plagiarism and AI Usage Statement
 \
