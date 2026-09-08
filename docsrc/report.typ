@@ -228,11 +228,18 @@ tunable parameters can produce an accurate cardinality estimation with only $O(k
 
 == Scaling to Massive Datasets
 \
-As seen in the previous sections, the FM algorithm is a great choice for scenarios where
-we need to scale up to massive datasets. \
-The constant space complexity, along with the constant processing time required for each
-element, make it that the algorithm's performance does not degrade as the amount of
-processed data increases.
+The FM algorithm is well suited for unbounded streams and massive datasets, thanks to the
+fact that neither the memory footprint or the processing cost of a single element. 
+As seen in the complexity analysis above, the algorithm requires only $O(k)$ space to
+maintain the trailing-zero registers, where _k_ is the number of hash functions used; this
+stays constant regardless of whether the stream contains a thousand or a billion distinct
+_userIDs_.
+
+As with the other probabilistic techniques discussed in this report (AMS and Bloom Filter),
+the trade-off for this scalability is accuracy: increasing _FM_NUM_HASHES_ (and, as a result, 
+the number of register groups used for stochastic averaging) reduces the expected estimation
+error, but at the cost of proportionally more memory and more hashing work per stream element.
+This tunable trade-off is precisely what allows FM, like AMS and the Bloom Filter, to scale to massive datasets where computing an exact answer would be infeasible.
 
 = AMS Algorithm
 \
