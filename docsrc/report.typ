@@ -112,7 +112,8 @@ The python notebook submitted with this project can be configured with the follo
 - *BLOOM_FILTER_N_BITS*: Number of total bits used in the bloom filter (used for the single
   run only, not for the optional cells enabled with _ENABLE_ADDITIONAL_EXPERIMENTS_).
 - *BLOOM_FILTER_FAKE_IDS_PROPORTION*: Used for generating a stream of fake _UserIDs_
-  that is used inside the bloom filter portion of the notebook.
+  that is used inside the bloom filter portion of the notebook. The proportion represents how many fake ids
+  we want to generate for each real one
 
 = Flajolet–Martin Algorithm <fm_algo>
 \
@@ -125,7 +126,7 @@ The core idea is to leverage two very important properties of hash functions:
 
 But why do we focus on the number of trailing zeros (tail length) of the hashed value? \
 The probability that a single hash value ends with _n_ trailing zeros is $1/(2^n)$. \
-From this forumula we can derive that:
+From this formula we can derive that:
 
 - The probability of a single hash value not having _n_ trailing zeros is $1 - 1/2^n = 1 - 2^(-n)$
 - The probability of *none* of _k_ hash values having _n_ trailing zeros is $(1 - 1/2^n)^k$. This can be
@@ -175,7 +176,7 @@ to compute the final estimation.
       return (x & -x).bit_length() - 1
 
   def hash64bits(value, seed):
-      return xxhash.xxh64(value.to_bytes(8, "little"), seed=seed).intdigest()
+      return xxhash.xxh3_64(value.to_bytes(8, "little"), seed).intdigest()
 
   def fm_partition(it):
       registers = [0] * FM_NUM_HASHES
@@ -228,8 +229,9 @@ tunable parameters can produce an accurate cardinality estimation with only $O(k
 
 == Scaling to Massive Datasets
 \
-The FM algorithm is well suited for unbounded streams and massive datasets, thanks to the
-fact that neither the memory footprint or the processing cost of a single element. 
+The FM algorithm is well suited for unbounded streams and massive datasets, since neither
+the memory footprint nor the processing cost of a single element depends on the number of
+distinct elements seen so far.
 As seen in the complexity analysis above, the algorithm requires only $O(k)$ space to
 maintain the trailing-zero registers, where _k_ is the number of hash functions used; this
 stays constant regardless of whether the stream contains a thousand or a billion distinct
@@ -239,7 +241,15 @@ As with the other probabilistic techniques discussed in this report (AMS and Blo
 the trade-off for this scalability is accuracy: increasing _FM_NUM_HASHES_ (and, as a result, 
 the number of register groups used for stochastic averaging) reduces the expected estimation
 error, but at the cost of proportionally more memory and more hashing work per stream element.
-This tunable trade-off is precisely what allows FM, like AMS and the Bloom Filter, to scale to massive datasets where computing an exact answer would be infeasible.
+This tunable trade-off is precisely what allows FM, like AMS and the Bloom Filter, to scale to
+massive datasets where computing an exact answer would be infeasible.
+
+Since each partition's registers depend only on the maximum trailing-zero count observed
+within that partition, partitions can be processed fully independently, with a final
+element-wise maximum across all partitions' registers (via _mapPartitions_ and _reduce_)
+to obtain the global result.
+This requires no coordination between partitions until that final aggregation step, allowing FM
+to scale naturally across a distributed cluster as either data volume or worker count grows.
 
 = AMS Algorithm
 \
