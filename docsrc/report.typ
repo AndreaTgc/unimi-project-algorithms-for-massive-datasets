@@ -38,7 +38,6 @@ This project was developed using _Google Colab_ as the main computation environm
 Below is a brief description of the computational resources available on the 
 CoLab runtime and the versions of the main libraries used in this project:
 
-
 - *CPU*: Intel Xeon CPU with 2 vCPUs (virtual CPUs) and 13GB of RAM. 
 - *Python Version*: 3.13.15 (built with GCC 11.4.0)
 - *PySpark Version*: 4.0.4 
@@ -61,18 +60,29 @@ The datset, once downloaded, has a size of approximately *6.15 GBs* presents its
 - *test.csv*: Not relevant for our use case
 - *train.csv*: Not relevant for our use case
 
+The version of the dataset used for the project is the following:
+
+- Version 6 on #link("https://www.kaggle.com/datasets/benjaminawd/new-york-times-articles-comments-2020")[Kaggle]. 
+
+#boxed-note("The dataset was last accessed on " + datetime.today().display());
+
 == Preprocessing Techniques
 \
 During the preprocessing phase of the project we discarded all the columns that are not relevant for our use case, in particular:
 
 - For the Flajolet-Martin portion of the project (@fm_algo), we discarded all the columns except the _UserID_ and, since all the
   fields inside the schema are tagged as *nullable*, we excluded all the null entries to avoid using garbage data.
+- For the Bloom Filter implementation, the process was a little different, we first gathered the article section that received the
+  most comments (in our case: _Opinion_) and we extracted the set of all unique userIDs that commented those articles at least once. \
+  After that, we procedurally generated a set of fake _UserIds_ that was then used to test the false positive rate of the bloom filter
+  implementation at different values of _k_ and _m_ (see @bloom_filter_intro)
 
 == Subsampling
 \
 In order to ensure a reasonable execution time, we introduced a method that allows the user to load only a part of the dataset
 instead of the whole.
 This method can be tweaked by modifying the *SAMPLING_PROPORTION* (see: @sysconf) variable inside the notebook provided alongside this document. \
+By default, the submitted notebook only uses 30% of the original dataset.
 
 = System Configuration <sysconf>
 \
@@ -81,6 +91,7 @@ The python notebook submitted with this project can be configured with the follo
 - *ENABLE_LOGGING*: enables additional prints during the notebook execution
 - *SAMPLING_PROPORTION*: How much of the whole dataset we want to use for the current run, valid if in range $(0, 1]$.
 - *FM_NUM_HASHES*: Number of hash functions to use for the Flajolet-Martin implementation.
+- *AMS_STORED_VARS*: Number of variables that the AMS implementation keeps track of inside the reservoir.
 
 = Flajolet–Martin Algorithm <fm_algo>
 \
@@ -294,18 +305,39 @@ described class:
 As introduced in @bloom_filter_intro, we are going to test the proposed implementation
 in the following way:
 - We first gather the set of all unique _UserIDs_ of users that commented at
-  least one article belonging to the _Opinion_ section.
+  least one article belonging to the _Opinion_ section. This section was chosen because it was the one
+  that presented the largest number of comments, making it a good fit for the experiment.
 - We then generate a set of fake _UserIDs_ that are guaranteed not to be found
-  inside the first set.
-- We "bootstrap" the filter by adding all the _UserIDs_ of the first set to it.
+  inside the first set. These IDs are generated using a range of integers that starts from the maximum
+  ID found in the real set, the experiment is therefore easily reproducible since no randomness is added
+  after the initial sampling.
+- We "bootstrap" the filter by adding all the _UserIDs_ of the first set to it, giving us a bitset inside the
+  filter that we can test against fake IDs.
 - We iterate over the second set to calculate the false positive rate with different
-  configurations of _m_ and _k_.
+  configurations of _m_ and _k_. The number of generated IDs is configurable via a global variable
+  in the configuration section of the notebook.
 
 The workflow we just described is going to allow us to compare the empirical results
 gathered with the theory explained in @bloom_filter_theory 
 
 == Experimental Results
 \
+The following table contains the following information:
+- The stars represent the _k_ that resulted in the lower false positive rate for each configuration.
+- The dashed vertical lines represent the theoretical best _k_ as defined in @bloom_filter_theory.
+- The full lines represent how the false positive rate evolves as we change _k_.
+- The dashed lines that are overallapped to the full ones represent how the equations explaiend in
+  @bloom_filter_theory expected the behaviour to evolve.
+
+#figure(
+  caption: [Bloom filter behavior with when tested with a 10.0 fake IDs proportion],
+  image("assets/bloom_filter_tests.png")
+)
+
+As we can see in the figure above, the empirical results closely follow the expected theoritical ones,
+confirming that the proposed implementation behaves as expected with the generated sample.
+The number of hash functions that led to the best result for each _bits per element_ configuration are
+also very close to the theoretical ideal _k_ described in @bloom_filter_theory.
 
 == Scaling to Massive Dataset 
 \
@@ -313,7 +345,9 @@ The bloom filter proposed in this project is suited for scaling to massive datas
 given that it is configured with _m_ and _k_ values that are approriate for the task at
 hand. \
 Once the filter has been configured, the memory consumption is fixed at _m_ bits, regarless
-of the number of elements inserted into the filter. Moreover, as seen in @bloom_filter_complexity, the time complexity depends on the value of _k_; since this value is usually constant, the time complexity can be seen as $O(1)$ for each insertion and membership check.\
+of the number of elements inserted into the filter. Moreover, as seen in @bloom_filter_complexity, the time complexity
+depends on the value of _k_; since this value is usually constant, the time complexity can be seen as $O(1)$ for each
+insertion and membership check.\
 
 On the other hand, approaches that use set-like data structures to keep track of the elements
 have a space complexity of $O(n)$. Additionally, as the number of elements inside a set
