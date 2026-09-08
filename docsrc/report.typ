@@ -10,6 +10,8 @@
     Datasets_ course.
   Taught by #link("https://malchiodi.di.unimi.it/it")[_Dario Malchiodi_] at _Università degli studi di Milano_.\
   We present the implementation of two stream analysis algorithms: Flajolet-Martin and Alon-Matias-Szegedy, starting from the theory behind them and going all the way through the implementation choices and experimental results.
+  Additionally, we also present a bloom filter implementation and evaluate the false positive 
+  rate at different configurations of bits per element and number of hash functions used.
 ],
 )
 
@@ -72,6 +74,11 @@ During the preprocessing phase of the project we discarded all the columns that 
 
 - For the Flajolet-Martin portion of the project (@fm_algo), we discarded all the columns except the _UserID_ and, since all the
   fields inside the schema are tagged as *nullable*, we excluded all the null entries to avoid using garbage data.
+- For the AMS portion of the project, we used the already computed dataframe from the FM
+  algorithm and combined that with the dataset containing all the articles. This was done
+  to extract a stream of articles sections that will be used to estimate the second moment.
+  Since the users were already (optionally) subsampling in the first point, no additional
+  subsampling was applied.
 - For the Bloom Filter implementation, the process was a little different, we first gathered the article section that received the
   most comments (in our case: _Opinion_) and we extracted the set of all unique userIDs that commented those articles at least once. \
   After that, we procedurally generated a set of fake _UserIds_ that was then used to test the false positive rate of the bloom filter
@@ -89,9 +96,18 @@ By default, the submitted notebook only uses 30% of the original dataset.
 The python notebook submitted with this project can be configured with the following set of variables:
 
 - *ENABLE_LOGGING*: enables additional prints during the notebook execution
+- *ENABLE_ADDITIONAL_EXPERIMENTS*: enables extra portions of the notebook that
+  are mainly used for comparative studies and for generating the plots seen in
+  the report (very time consuming).
 - *SAMPLING_PROPORTION*: How much of the whole dataset we want to use for the current run, valid if in range $(0, 1]$.
+- *RAND_SEED*: Random number generator seeding for reproducibility.
 - *FM_NUM_HASHES*: Number of hash functions to use for the Flajolet-Martin implementation.
+- *FM_GROUP_SIZES*:
 - *AMS_STORED_VARS*: Number of variables that the AMS implementation keeps track of inside the reservoir.
+- *BLOOM_FILTER_N_HASHES*: 
+- *BLOOM_FILTER_N_BITS*: 
+- *BLOOM_FILTER_FAKE_IDS_PROPORTION*: Used for generating a stream of fake _UserIDs_
+  that is used inside the bloom filter portion of the notebook.
 
 = Flajolet–Martin Algorithm <fm_algo>
 \
@@ -171,14 +187,111 @@ to compute the final estimation.
 
 == Experimental Results
 \
+We ran the Flajolet-Martin estimator with _FM_NUM_HASHES_ = 16 (see @sysconf) hash functions against the
+stream of unique commentor _userIDs_, and compared the resulting estimate against the exact
+distinct count (computed directly via aggregation) and against Spark's built-in HyperLogLog
+estimator, used here as a reference for how a more refined cardinality estimator performs on
+the same data. \
+
+#table(
+  columns: 3,
+  [*Method*], [*Estimate*], [*Relative error*],
+  [Exact count],                   [218,567], [Not Applicable],
+  [FM (naive, no grouping)],       [338,902], [55.1%],
+  [FM (grouped, _FM_GROUP_SIZES_ = 4)], [262,311], [20.0%],
+  [Spark HyperLogLog],             [238,510], [9.1%],
+)
+
+As expected from the stochastic averaging technique described in @fm_algo, grouping the
+registers before exponentiating substantially reduces the estimation error compared to
+taking the median of the raw hash function estimates:
+- the grouped estimate's error (20.0%) is roughly a third of the naive estimate's error (55.1%).
+  This confirms that averaging the register values within each group, rather than averaging the resulting
+  $2^R$ estimates directly, is an effective way to reduce the variance introduced by any
+  single hash function producing an unusually high maximum trailing-zero count
+
+=== Comparison with Spark's HyperLogLog
+\
+Spark's HyperLogLog implementation still outperforms our grouped FM estimate (9.1% vs 20.0%
+error), which is expected: HyperLogLog uses a more refined combination technique (harmonic
+mean combined with bias correction) than the simple stochastic averaging used here.
+HyperLogLog is now the industry standard for cardinality estimation on massive datasets,
+so the fact it outperformed the FM algorithm was to be expected (HyperLogLog was designed on
+top of the knowledge derived from FM).
+With that said, the project still shows how even a straightforward FM implementation with
+tunable parameters can produce an accurate cardinality estimation with only $O(k)$ memory.
+
+== Scaling to Massive Datasets
+\
+As seen in the previous sections, the FM algorithm is a great choice for scenarios where
+we need to scale up to massive datasets. \
+The constant space complexity, along with the constant processing time required for each
+element, make it that the algorithm's performance does not degrade as the amount of
+processed data increases.
+
 = AMS Algorithm
 \
-== Space/Time Complexity
+The Alon–Matias–Szegedy (AMS) @ams1996 algorithm is a probabilistic streaming algorithm used to estimate the
+frequency moments of a data stream without storing the entirety of said stream in memory. \
+In this project, it's used to estimate the second moment ($F_2$) of the stream of article sections
+referenced in each comment.
+The second moment is a very useful metric that we can use to understand how skewed the distribution
+of comments is across all possible sections. A uniform distribution over _k_ sections
+would result in $F_2 approx n^2 / k$, while a more skewed distribution (where few sections dominate)
+would result in a much larger $F_2$ value.
+
+== Space/Time Complexity <ams_complexity>
 \
+The AMS algorithm maintains a fixed number of key-counter pairs (see AMS_STORED_VARS in @sysconf)
+that is indipendent of the stream the algorithm operates on. \
+This means that, for reservoir of size _v_, the space complexity for this algorithm
+is going to be $O(v)$.
+These characteristics make AMS suitable for streaming environments where the number
+of distinct elements is either large or unknown to the user before runtime.
+
 == Implementation Details
 \
+Each one of the stored _v_ variables tracks two fundamental pieces of information:
+
+- The stream element it is referring to.
+- The number of times the same element was seen from its selected potition onward.
+
+Let's now go over how the algorithm itself operates.
+
+- The first _v_ elements of the stream are used to initialize the reservoir (setting the count to 1 for each of them). \
+- For every subsequent element at position _n_ (with $n > v$), the new position is
+  selected with probability $v/n$.
+  - If *not selected*: none of the _v_ variables change which position they are tracking.
+  - If *selected*: exactly *one* of the _v_ variables is chosen uniformly at random and
+    evicted, it is then replaced by a new variable tracking the current element, with its
+    count reset to 1.
+- Regardless of whether a variable was just evicted, every other variable's counter is
+  incremented whenever the current stream element matches the value it is tracking.
+
+The process above guarantees that, at any point in the stream, every position has an
+equal probability $v/n$ of being the position currently tracked by one of the _v_
+variables.
+
 == Experimental Results
 \
+The proposed implementation was run with multiple values of AMS_STORED_VARS (see @sysconf)
+== Scaling to Massive Datasets
+\
+The AMS algorithm is a good choice for massive datasets and unbounded streams,
+as long as the number of stored variables _v_ is chosen accordingly to the
+desired accuracy. \
+As seen in @ams_complexity, both the algorithm's space complexity and the processing
+cost per element are independent of the stream length (_n_) and the number of
+unique elements in the stream.
+As with all probabilistic approaches, the trade-off is accuracy, since AMS is
+a randomised estimator (the number of stored variables _v_ has to grow in order
+to reduce variance). \
+If we think about it, the role of _v_ is analogous to the number of hash functions
+(_k_) used in the FM algorithm explained in the first portion of the report. \
+Both these algorithms (and the Bloom Filter data structure below) trade space
+for accuracy in a way that can be tuned by the user, and this is exactly what
+makes them fit for massive datasets.
+
 = Bloom Filter <bloom_filter_intro>
 \
 A bloom filter @bloom1970 is a probabilistic hash based data structure that is used for checking whether or
@@ -326,7 +439,7 @@ The following table contains the following information:
 - The stars represent the _k_ that resulted in the lower false positive rate for each configuration.
 - The dashed vertical lines represent the theoretical best _k_ as defined in @bloom_filter_theory.
 - The full lines represent how the false positive rate evolves as we change _k_.
-- The dashed lines that are overallapped to the full ones represent how the equations explaiend in
+- The dashed lines that are overlapped to the full ones represent how the equations explaiend in
   @bloom_filter_theory expected the behaviour to evolve.
 
 #figure(
@@ -342,9 +455,9 @@ also very close to the theoretical ideal _k_ described in @bloom_filter_theory.
 == Scaling to Massive Dataset 
 \
 The bloom filter proposed in this project is suited for scaling to massive datasets,
-given that it is configured with _m_ and _k_ values that are approriate for the task at
+given that it is configured with _m_ and _k_ values that are appropriate for the task at
 hand. \
-Once the filter has been configured, the memory consumption is fixed at _m_ bits, regarless
+Once the filter has been configured, the memory consumption is fixed at _m_ bits, regardless 
 of the number of elements inserted into the filter. Moreover, as seen in @bloom_filter_complexity, the time complexity
 depends on the value of _k_; since this value is usually constant, the time complexity can be seen as $O(1)$ for each
 insertion and membership check.\
@@ -353,7 +466,7 @@ On the other hand, approaches that use set-like data structures to keep track of
 have a space complexity of $O(n)$. Additionally, as the number of elements inside a set
 grows, the performance of the set operations tends to degrade as well due to hash collisions (both on open and closed hashing approaches). \
 
-A bloom filter therefore provides a userful accuracy/memory tradeoff for large scale data
+A bloom filter therefore provides a useful accuracy/memory tradeoff for large scale data
 processing.
 When the expected number of elements is known, the filter can be configured with $m=b n$
 bits, where _b_ is the number of bits allocated per element.
