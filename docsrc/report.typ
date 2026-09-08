@@ -102,10 +102,15 @@ The python notebook submitted with this project can be configured with the follo
 - *SAMPLING_PROPORTION*: How much of the whole dataset we want to use for the current run, valid if in range $(0, 1]$.
 - *RAND_SEED*: Random number generator seeding for reproducibility.
 - *FM_NUM_HASHES*: Number of hash functions to use for the Flajolet-Martin implementation.
-- *FM_GROUP_SIZES*:
+- *FM_GROUP_SIZES*: Number of FM registers averaged together (raw values, before
+  exponentiating) to form a single group estimate, as part of the stochastic averaging
+  technique described in @fm_algo.
 - *AMS_STORED_VARS*: Number of variables that the AMS implementation keeps track of inside the reservoir.
-- *BLOOM_FILTER_N_HASHES*: 
-- *BLOOM_FILTER_N_BITS*: 
+- *BLOOM_FILTER_N_HASHES*: Number of hash functions used for each element in the bloom
+  filter implementation (used for the single run only, not for the optional cells enabled
+  with _ENABLE_ADDITIONAL_EXPERIMENTS_).
+- *BLOOM_FILTER_N_BITS*: Number of total bits used in the bloom filter (used for the single
+  run only, not for the optional cells enabled with _ENABLE_ADDITIONAL_EXPERIMENTS_).
 - *BLOOM_FILTER_FAKE_IDS_PROPORTION*: Used for generating a stream of fake _UserIDs_
   that is used inside the bloom filter portion of the notebook.
 
