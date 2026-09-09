@@ -213,14 +213,15 @@ distinct count (computed directly via aggregation) and against Spark's built-in 
 estimator, used here as a reference for how a more refined cardinality estimator performs on
 the same data. \
 
-#table(
+#align(center,
+table(
   columns: 3,
   [*Method*], [*Estimate*], [*Relative error*],
   [Exact count],                   [218,567], [Not Applicable],
   [FM (naive, no grouping)],       [338,902], [55.1%],
   [FM (grouped, _FM_GROUP_SIZES_ = 4)], [262,311], [20.0%],
   [Spark HyperLogLog],             [238,510], [9.1%],
-)
+))
 
 As expected from the stochastic averaging technique described in @fm_algo, grouping the
 registers before exponentiating substantially reduces the estimation error compared to
@@ -354,12 +355,13 @@ We evaluated the AMS algorithm against the stream of article sections referenced
 comparing its $tilde(F)_2$ estimate against the exact $F_2$ value computed directly via
 aggregation over the same (sampled) dataset. The exact values obtained were:
 
-#table(
+#align(center,
+table(
   columns: 2,
   [*Metric*], [*Value*],
   [Stream length ($n$)],       [1,498,190],
   [Exact $F_2$],                [533,168,431,742],
-)
+))
 
 We also computed the *skew ratio* of the comment distribution across sections, defined as
 the ratio between the observed $F_2$ and the $F_2$ expected under a uniform distribution over
@@ -387,24 +389,23 @@ $ v approx 2/epsilon^2 $
 For a target error of 10%, this predicts $v approx 200$. To test this prediction directly, we
 swept _AMS_STORED_VARS_ over $v in [175, 225]$, bracketing the predicted optimum:
 
-/*
 #figure(
   caption: [AMS relative error across a sweep of reservoir sizes ($v in [175, 225]$), showing
     convergence toward low error as _v_ approaches and exceeds the theoretically predicted
     $v approx 2/epsilon^2 approx 200$.],
-  image("assets/ams_sweep.png")
+  image("assets/ams_figure.png")
 )
-*/
 
 The results confirm the prediction closely. Averaging in blocks:
 
-#table(
+#align(center,
+table(
   columns: 2,
   [*Range*], [*Average error*],
   [$v in [175, 192]$], [18.6%],
   [$v in [193, 203]$], [7.9%],
   [$v in [204, 225]$], [2.2%],
-)
+))
 
 Error drops sharply as _v_ approaches and exceeds the predicted $v approx 200$, with several
 runs beyond this point achieving well under 1% error (e.g. 0.14% at $v=223$, 0.11% at
