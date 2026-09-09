@@ -141,7 +141,7 @@ The core idea is to leverage two very important properties of hash functions:
 - *Uniform Distribution*: the hashed values are uniformly distributed over the binary space
 
 But why do we focus on the number of trailing zeros (tail length) of the hashed value? \
-The probability that a single hash value ends with _n_ trailing zeros is $1/(2^n)$. \
+The probability that a single hash value ends with at least _n_ trailing zeros is $1/(2^n)$. \
 From this formula we can derive that:
 
 - The probability of a single hash value not having _n_ trailing zeros is $1 - 1/2^n = 1 - 2^(-n)$
@@ -162,8 +162,8 @@ In order to fix this issue, we compute the average of the median estimations we 
 
 == Space/Time Complexity
 \
-This algorithm has a time complexity of $O(k n)$ where _n_ is the length of the stream and _k_ is the constant value
-that refers to the computational cost of the hash functions and update procedure. \
+This algorithm has a time complexity of $O(k n)$ where _n_ is the length of the stream and _k_ is the number of hash functions
+applied to each element.
 The space complexity is $O(k)$ instead, we only need to store a constant amount of information needed to update the
 trailing zeros counts; the precise memory usage depends on how many hash function we decide to use for the algorithm. \
 
@@ -485,13 +485,15 @@ uniformely over the _m_ bits.
 - We can now approximate $(1 - 1/m)^(k n)$ to $e^((-k n)/m)$ to obtain:
     - $P("false positive approx") = (1 - e^((-k n)/m))^k$
 
-We can see that, the higher _m_ and _k_ are, the less likely the filter is to
+We can see that, the higher _m_ gets, the less likely the filter is to
 report a false positive when it's being used. \
 It goes without saying that we cannot simply keep driving these numbers up
 without encountering memory and time issues. To correctly make use of a bloom
 filter, the user must choose _m_ based on their memory constraints and _k_
 depending on the time that is allocatable to the task of computing the hash
 functions for a given element.
+
+#boxed-note("As we will show below, increasing _k_ does not always guarantee better results")
 
 If we want to minimize the probability of false positives, we can choose the
 ideal number of hash functions _k_ using the following equation and rounding
@@ -604,9 +606,7 @@ depends on the value of _k_; since this value is usually constant, the time comp
 insertion and membership check.\
 
 On the other hand, approaches that use set-like data structures to keep track of the elements
-have a space complexity of $O(n)$. Additionally, as the number of elements inside a set
-grows, the performance of the set operations tends to degrade as well due to hash collisions (both on open and closed hashing approaches). \
-
+have a space complexity of $O(n)$. 
 A bloom filter therefore provides a useful accuracy/memory tradeoff for large scale data
 processing.
 When the expected number of elements is known, the filter can be configured with $m=b n$
