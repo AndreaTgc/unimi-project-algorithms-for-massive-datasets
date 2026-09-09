@@ -3,7 +3,7 @@
 #show link: underline
 
 #show: paper.with(
-  title : "Andrea Colombo - Algorithms for Massive Datasets course project - A.A 2025/2026",
+  title : "Andrea Colombo - Algorithms for Massive Datasets course project - UniMi A.A 2025/2026",
   authors: ("Andrea Colombo",),
   abstract: [
     This report contains the documentation related to the project submission for the _Algorithms for Massive
@@ -34,6 +34,18 @@ The algorithms and tasks we are going to explore are the following:
   The full description of the algorithm and the implementation choices can be
   found in @fm_algo.
 
+- Using the Alon–Matias–Szegedy @ams1996 algorithm to estimate the second moment of the
+  article sections that have beenc ommented by the users.
+
+Additionally, we present a widely used probabilistic data structure, the bloom filter
+@bloom1970, for the following task:
+
+- Evaluating the performance of a bloom filter implementation @bloom_filter_intro, focussing on how the
+  false positive rate is affected by the configuration parameters _m_ and _k_ (bits per
+  element and number of hash functions used). This implementation was tested by combining
+  a stream of unique _UserIDs_ (taken from the original dataset) and an additional stream
+  of procedurally generated IDs.
+
 == Development Environment
 \
 This project was developed using _Google Colab_ as the main computation environment. The Jupyter Notebook submitted alongside this project may require some modifications before being run in a local environment. \
@@ -48,6 +60,8 @@ CoLab runtime and the versions of the main libraries used in this project:
 #boxed-note(
   "Please note that these versions are correct at the time of writing: " + datetime.today().display())
 
+The notebook will take care of installing all the required libraries and the dataset automatically.
+
 = Dataset Description <dataset_desc>
 \
 The dataset used for this project is the *New York Times Articles & Comments (2020)* @nyt_articles_comments dataset, freely
@@ -57,7 +71,7 @@ The datset, once downloaded, has a size of approximately *6.15 GBs* presents its
 
 - *nyt-articles-2020.csv*: Contains all the articles published in 2020 by the NYT.
 - *nyt-comments-2020.csv*: this file contains all the comments relative to the articles found in _nyt-articles-2020.csv_.
-- *nyt-comments-part0.csv .. nyt-comments-part9.csv*: these fails simply contain the data found in _nyt-comments-2020.csv_ split
+- *nyt-comments-part0.csv .. nyt-comments-part9.csv*: these files simply contain the data found in _nyt-comments-2020.csv_ split
   in 10 different partitions.
 - *test.csv*: Not relevant for our use case
 - *train.csv*: Not relevant for our use case
@@ -117,7 +131,7 @@ The python notebook submitted with this project can be configured with the follo
 
 = Flajolet–Martin Algorithm <fm_algo>
 \
-First introduced in 1985 @flajolet1985probabilistic, the Flajolet-Martin algorithm is a probabilistic
+First introduced in 1985 @flajolet1985probabilistic, the Flajolet-Martin algorithm is a probabilistic streaming
 algorithm that aims at estimating the number of distinct elements through the use of hash functions. \
 The core idea is to leverage two very important properties of hash functions:
 
@@ -294,9 +308,111 @@ The process above guarantees that, at any point in the stream, every position ha
 equal probability $v/n$ of being the position currently tracked by one of the _v_
 variables.
 
+The code block below shows the function that implements the AMS algorithm in the submitted
+notebook.
+
+#code-block(
+  lang: "python",
+  ```python
+def ams_stream_counters(it, stored_vars=AMS_STORED_VARS, eval_every=None):
+    import random
+    rng = random.Random(RAND_SEED)
+    stored = []  # variables
+    counters = []  # counters for variables
+    n = 0
+    for element in it:
+        n += 1
+        replaced_idx = None
+        if len(stored) < stored_vars:
+            stored.append(element)
+            counters.append(1)
+            replaced_idx = len(stored) - 1
+        else:
+            if rng.random() < stored_vars / n:
+                replaced_idx = rng.randrange(stored_vars)
+                stored[replaced_idx] = element
+                counters[replaced_idx] = 1
+
+        for i in range(len(stored)):
+            if i == replaced_idx:
+                continue
+            if stored[i] == element:
+                counters[i] += 1
+
+        # periodic yield for infinite streams
+        if eval_every is not None and n % eval_every == 0:
+            yield n, counters
+
+    yield n, counters
+  ```
+)
+
+
 == Experimental Results
 \
-The proposed implementation was run with multiple values of AMS_STORED_VARS (see @sysconf)
+We evaluated the AMS algorithm against the stream of article sections referenced by comments,
+comparing its $tilde(F)_2$ estimate against the exact $F_2$ value computed directly via
+aggregation over the same (sampled) dataset. The exact values obtained were:
+
+#table(
+  columns: 2,
+  [*Metric*], [*Value*],
+  [Stream length ($n$)],       [1,498,190],
+  [Exact $F_2$],                [533,168,431,742],
+)
+
+We also computed the *skew ratio* of the comment distribution across sections, defined as
+the ratio between the observed $F_2$ and the $F_2$ expected under a uniform distribution over
+the same number of distinct sections ($n^2 slash k$, where _k_ is the number of distinct
+sections). The uniform-case $F_2$ is approximately 53,442,220,860, giving a skew ratio of
+approximately *9.98x*. This confirms that comment activity is heavily concentrated in a small
+number of sections rather than spread evenly across all 42, consistent with _Opinion_ being
+by far the most-commented section, as observed independently in @bloom_filter_intro when
+selecting the section for the Bloom Filter experiment.
+
+=== Choosing the Reservoir Size
+\
+Since AMS relies on randomised reservoir sampling, the accuracy of a single run depends on the
+variance of the estimator, which in turn depends on the reservoir size _v_. The original AMS
+paper @ams1996 bounds the variance of a single estimator as:
+
+$ "Var"(X) <= 2 F_2^2 $
+
+Averaging over _v_ independent estimators reduces this variance by a factor of _v_, giving an
+expected relative standard error of approximately $sqrt(2/v)$. Solving for the number of
+variables needed to reliably achieve a target relative error $epsilon$ gives:
+
+$ v approx 2/epsilon^2 $
+
+For a target error of 10%, this predicts $v approx 200$. To test this prediction directly, we
+swept _AMS_STORED_VARS_ over $v in [175, 225]$, bracketing the predicted optimum:
+
+/*
+#figure(
+  caption: [AMS relative error across a sweep of reservoir sizes ($v in [175, 225]$), showing
+    convergence toward low error as _v_ approaches and exceeds the theoretically predicted
+    $v approx 2/epsilon^2 approx 200$.],
+  image("assets/ams_sweep.png")
+)
+*/
+
+The results confirm the prediction closely. Averaging in blocks:
+
+#table(
+  columns: 2,
+  [*Range*], [*Average error*],
+  [$v in [175, 192]$], [18.6%],
+  [$v in [193, 203]$], [7.9%],
+  [$v in [204, 225]$], [2.2%],
+)
+
+Error drops sharply as _v_ approaches and exceeds the predicted $v approx 200$, with several
+runs beyond this point achieving well under 1% error (e.g. 0.14% at $v=223$, 0.11% at
+$v=225$) — exceeding what the theoretical bound alone would predict. This is consistent with
+$"Var"(X) <= 2F_2^2$ being a conservative, worst-case bound; the true variance for this
+dataset's actual frequency distribution appears more favourable than the generic bound
+assumes.
+
 == Scaling to Massive Datasets
 \
 The AMS algorithm is a good choice for massive datasets and unbounded streams,
@@ -465,7 +581,7 @@ The following table contains the following information:
   @bloom_filter_theory expected the behaviour to evolve.
 
 #figure(
-  caption: [Bloom filter behavior with when tested with a 10.0 fake IDs proportion],
+  caption: [Bloom filter behavior when tested with a 10.0 fake IDs proportion],
   image("assets/bloom_filter_tests.png")
 )
 
