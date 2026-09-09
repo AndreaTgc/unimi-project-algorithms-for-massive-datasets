@@ -24,7 +24,8 @@ Following this project description, the submission contains the following implem
 - AMS algorithm to estimate the second moment of the sections that received a
   comment in the dataset.
 - Bloom filter implementation for the users that left a comment, tested against
-  the stream of users that left a comment under articles of the _Opinion_ section.
+  the stream of users that left a comment under articles of the _Opinion_ section and an additional
+  stream of procedurally generated users.
 
 ### Source Code
 

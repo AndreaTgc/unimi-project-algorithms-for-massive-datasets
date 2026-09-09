@@ -12,6 +12,8 @@
   We present the implementation of two stream analysis algorithms: Flajolet-Martin and Alon-Matias-Szegedy, starting from the theory behind them and going all the way through the implementation choices and experimental results.
   Additionally, we also present a bloom filter implementation and evaluate the false positive 
   rate at different configurations of bits per element and number of hash functions used.
+
+  All the code referenced in this report can be found in the jupyter notebook submitted alongside this file.
 ],
 )
 
@@ -402,14 +404,14 @@ The results confirm the prediction closely. Averaging in blocks:
 table(
   columns: 2,
   [*Range*], [*Average error*],
-  [$v in [175, 192]$], [18.6%],
+  [$v in [175, 192]$], [16.6%],
   [$v in [193, 203]$], [7.9%],
   [$v in [204, 225]$], [2.2%],
 ))
 
 Error drops sharply as _v_ approaches and exceeds the predicted $v approx 200$, with several
 runs beyond this point achieving well under 1% error (e.g. 0.14% at $v=223$, 0.11% at
-$v=225$) — exceeding what the theoretical bound alone would predict. This is consistent with
+$v=225$) exceeding what the theoretical bound alone would predict. This is consistent with
 $"Var"(X) <= 2F_2^2$ being a conservative, worst-case bound; the true variance for this
 dataset's actual frequency distribution appears more favourable than the generic bound
 assumes.
@@ -613,8 +615,13 @@ In this case, the memory consumption also grows linearly with the number of elem
 but the required memory can be determined in advance and does not depend on the size of
 the individual elements.
 
+= Github Repository
+
+The jupyer notebook submitted alongside this project and the typst source files for the report can be found #link("https://github.com/AndreaTgc/unimi-project-algorithms-for-massive-datasets")[here]
+
 = Plagiarism and AI Usage Statement
 \
 _I declare that this material, which I now submit for assessment, is entirely my own work and has not been taken from the work of others, save and to the extent that such work has been cited and acknowledged within the text of my work. I understand that plagiarism, collusion, and copying are grave and serious offences in the university and accept the penalties that would be imposed should I engage in plagiarism, collusion or copying. This assignment, or any part of it, has not been previously submitted by me or any other person for assessment on this or any other course of study. No generative AI tool has been used to write the code or the report content._
 
 #bibliography("bibliography.bib")
+
