@@ -18,24 +18,24 @@
 = Introduction <intro>
 \
 The analysis of massive datasets has become an increasingly important problem
-in the later years. These scenarios pose significant challenges due to the sheer amount of data to be proceseed; in most cases, storing the entire dataset
+in the later years. These scenarios pose significant challenges due to the sheer amount of data to be processed; in most cases, storing the entire dataset
 in memory is not feasible. \
 Stream analysis algorithms address this issue by processing the dataset sequentially, using
 limited amounts of memory and providing estimations about the stream properties we are
 interested in.
 Since these algorithms do not need to store the entirety of the stream in memory, they are used
-across a moltitude of domains and hardware, ranging from huge server rigs to tiny embedded
+across a multitude of domains and hardware, ranging from huge server rigs to tiny embedded
 microcontrollers.
 
 The algorithms and tasks we are going to explore are the following:
 
 - Using the _Flajolet-Martin Algorithm_ @flajolet1985probabilistic to produce
-  and estimation of the unique userIDs present in the dataset.
+  an estimation of the unique userIDs present in the dataset.
   The full description of the algorithm and the implementation choices can be
   found in @fm_algo.
 
 - Using the Alon–Matias–Szegedy @ams1996 algorithm to estimate the second moment of the
-  article sections that have beenc ommented by the users.
+  article sections that have been commented by the users.
 
 Additionally, we present a widely used probabilistic data structure, the bloom filter
 @bloom1970, for the following task:
@@ -67,7 +67,7 @@ The notebook will take care of installing all the required libraries and the dat
 The dataset used for this project is the *New York Times Articles & Comments (2020)* @nyt_articles_comments dataset, freely
 available and licensed under the #link("https://it.wikipedia.org/wiki/Licenze_Creative_Commons")[*CC-BY-NC-SA-4.0*] license. \
 
-The datset, once downloaded, has a size of approximately *6.15 GBs* presents itself in the form of multiple files:
+The dataset, once downloaded, has a size of approximately *6.15 GBs* and presents itself in the form of multiple files:
 
 - *nyt-articles-2020.csv*: Contains all the articles published in 2020 by the NYT.
 - *nyt-comments-2020.csv*: this file contains all the comments relative to the articles found in _nyt-articles-2020.csv_.
@@ -280,8 +280,8 @@ would result in a much larger $F_2$ value.
 == Space/Time Complexity <ams_complexity>
 \
 The AMS algorithm maintains a fixed number of key-counter pairs (see AMS_STORED_VARS in @sysconf)
-that is indipendent of the stream the algorithm operates on. \
-This means that, for reservoir of size _v_, the space complexity for this algorithm
+that is independent of the stream the algorithm operates on. \
+This means that, for a reservoir of size _v_, the space complexity for this algorithm
 is going to be $O(v)$.
 These characteristics make AMS suitable for streaming environments where the number
 of distinct elements is either large or unknown to the user before runtime.
@@ -517,7 +517,7 @@ The space complexity of the bloom filter is trivial too, it is equal to $O(m)$
 
 == Implementation Details <bloom_filter_impl>
 \
-Implementing a bloom filter from scratch in python is very straight forward.
+Implementing a bloom filter from scratch in python is very straightforward.
 Since python's integers are not restricted to a maximum amount of bits, we can use a
 single int as our bit array, this means that accessing individual bits can be done with
 simple bitwise operations that are very efficient.
@@ -586,7 +586,7 @@ The following table contains the following information:
   image("assets/bloom_filter_tests.png")
 )
 
-As we can see in the figure above, the empirical results closely follow the expected theoritical ones,
+As we can see in the figure above, the empirical results closely follow the expected theoretical ones,
 confirming that the proposed implementation behaves as expected with the generated sample.
 The number of hash functions that led to the best result for each _bits per element_ configuration are
 also very close to the theoretical ideal _k_ described in @bloom_filter_theory.
